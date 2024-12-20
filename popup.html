@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Attachments</title>
+  <script src="qrious.min.js"></script>
+  <style>
+    body {
+      width: 700px; /* Kompaktere Breite für das Popup */
+      margin: 0;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      font-size: 15px; /* Kleinere Schrift für mehr Platz */
+      box-sizing: border-box;
+    }
+  
+    .invoice-container {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px; /* Weniger Abstand zwischen den Blöcken */
+      margin: 10px 0;
+    }
+  
+    .invoice-block {
+      flex: 1;
+      min-width: 200px; /* Mindestbreite jedes Blocks */
+      border: 1px solid #ccc;
+      padding: 8px; /* Weniger Padding für kompaktere Darstellung */
+      border-radius: 5px;
+      background-color: #f9f9f9;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+  
+    .invoice-block h3 {
+      margin-top: 0;
+      font-size: 1em; /* Kleinere Überschrift */
+      color: #333;
+      text-align: center;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 5px;
+    }
+  
+    .invoice-block ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+  
+    .invoice-block ul li {
+      margin-bottom: 3px; /* Weniger Abstand zwischen den Listenelementen */
+      font-size: 0.9em; /* Kleinere Schrift für Listenelemente */
+      color: #555;
+    }
+  </style>
+
+
+</head>
+<body>
+  <div id="attachments-list">
+    Lade Anhänge...
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
