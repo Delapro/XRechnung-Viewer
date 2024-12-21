@@ -26,6 +26,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 	for (const attachment of attachments) {
 	  const listItem = document.createElement("b");
+	  
 	  listItem.style.display = "block";
 	  listItem.style.textAlign = "center";
 	  listElement.appendChild(listItem);
@@ -33,6 +34,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 	  if (attachment.contentType === "text/xml") {
 		const fileContent = await browser.messages.getAttachmentFile(messageId, attachment.partName);
 		const fileText = await fileContent.text();
+		
 		const parser = new DOMParser();
 		const xmlDoc = parser.parseFromString(fileText, "application/xml");
 
@@ -41,10 +43,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 		if (isXRechnung) {
 			invoiceData = extractInvoiceData(xmlDoc, "XRechnung");
-		  listItem.innerHTML = `<span style="color: green;">XRechnung erkannt</span>: <strong>${attachment.name}</strong>`;
+		  listItem.innerHTML = sanitizeHTML(`<span style="color: green;">XRechnung erkannt</span>: <strong>${attachment.name}</strong>`);
 		} else if (isZUGFeRD) {
 			invoiceData = extractInvoiceData(xmlDoc, "ZUGFeRD");
-		  listItem.innerHTML = `<span style="color: blue;">ZUGFeRD-Rechnung erkannt</span>: <strong>${attachment.name}</strong>`;
+		  listItem.innerHTML = sanitizeHTML(`<span style="color: blue;">ZUGFeRD-Rechnung erkannt</span>: <strong>${attachment.name}</strong>`);
 		}
 		
 		if (invoiceData) {
@@ -56,6 +58,32 @@ document.addEventListener("DOMContentLoaded", async () => {
 	console.error("Fehler im Popup:", error);
 	listElement.innerHTML = `Fehler: ${error.message}`;
   }
+  
+  function sanitizeHTML(input) {
+	const template = document.createElement("template");
+	template.innerHTML = input;
+  
+	// Alle Skripte und potenziell gefährlichen Tags entfernen
+	const tagsToRemove = ["script", "iframe", "object", "embed", "link"];
+	tagsToRemove.forEach(tag => {
+	  const elements = template.content.querySelectorAll(tag);
+	  elements.forEach(el => el.remove());
+	});
+  
+	// Entferne unsichere Attribute
+	const elements = template.content.querySelectorAll("*");
+	elements.forEach(el => {
+	  [...el.attributes].forEach(attr => {
+		const name = attr.name.toLowerCase();
+		if (name.startsWith("on") || name === "style" || name === "srcdoc") {
+		  el.removeAttribute(name);
+		}
+	  });
+	});
+  
+	return template.innerHTML;
+  }
+
 
   function checkIfXRechnung(xmlDoc) {
 	try {
@@ -127,6 +155,7 @@ function extractInvoiceData(xmlDoc, type) {
 		].filter(Boolean).join(", ");
 		data["Bankverbindung des Verkäufers"] = getXPathValue(xmlDoc, "//cac:PaymentMeans/cac:PayeeFinancialAccount/cbc:ID", nsResolver);
 		data["Gesamtbetrag"] = getXPathValue(xmlDoc, "//cac:LegalMonetaryTotal/cbc:PayableAmount", nsResolver);
+		data["Terms"] = getXPathValue(xmlDoc, "//cac:PaymentTerms/cbc:Note", nsResolver);
 	  } else if (type === "ZUGFeRD") {
 		data["Rechnungsdatum"] = getXPathValue(xmlDoc, "//ram:IssueDateTime/udt:DateTimeString", nsResolver);
 		data["Rechnungsnummer"] = getXPathValue(xmlDoc, "//rsm:ExchangedDocument/ram:ID", nsResolver);
@@ -146,6 +175,7 @@ function extractInvoiceData(xmlDoc, type) {
 		].filter(Boolean).join(", ");
 		data["Bankverbindung des Verkäufers"] = getXPathValue(xmlDoc, "//ram:PayeePartyCreditorFinancialAccount/ram:IBANID", nsResolver);
 		data["Gesamtbetrag"] = getXPathValue(xmlDoc, "//ram:GrandTotalAmount", nsResolver);
+		data["Terms"] = getXPathValue(xmlDoc, "//ram:SpecifiedTradePaymentTerms/ram:Description", nsResolver);
 	  }
 
 	  return data;
@@ -169,24 +199,24 @@ function displayInvoiceData(invoiceData, parentElement) {
 	const sellerBlock = document.createElement("article");
 	sellerBlock.classList.add("invoice-block");
 	sellerBlock.style.textAlign = "left";
-	sellerBlock.innerHTML = `
+	sellerBlock.innerHTML = sanitizeHTML(`
 	  <h3 style="text-align: left;">Verkäufer</h3>
 	  <ul>
 		<li><strong>Name:</strong> ${invoiceData["Name des Verkäufers"] || "Nicht gefunden"}</li>
 		<li><strong>Adresse:</strong> ${invoiceData["Adresse des Verkäufers"] || "Nicht gefunden"}</li>
 	  </ul>
-	`;
+	`);
 
 	const buyerBlock = document.createElement("article");
 	buyerBlock.classList.add("invoice-block");
 	buyerBlock.style.textAlign = "left";
-	buyerBlock.innerHTML = `
+	buyerBlock.innerHTML = sanitizeHTML(`
 	  <h3 style="text-align: left;">Käufer</h3>
 	  <ul>
 		<li><strong>Name:</strong> ${invoiceData["Name des Käufers"] || "Nicht gefunden"}</li>
 		<li><strong>Adresse:</strong> ${invoiceData["Adresse des Käufers"] || "Nicht gefunden"}</li>
 	  </ul>
-	`;
+	`);
 
 	const detailsBlock = document.createElement("article");
 	detailsBlock.classList.add("invoice-block");
@@ -195,15 +225,16 @@ function displayInvoiceData(invoiceData, parentElement) {
 
 	const leftDetails = document.createElement("div");
 	leftDetails.style.width = "70%";
-	leftDetails.innerHTML = `
+	leftDetails.innerHTML = sanitizeHTML(`
 	  <h3 style="text-align: left;">Rechnung</h3>
 	  <ul>
 		<li><strong>Rechnungsnummer:</strong> ${invoiceData["Rechnungsnummer"] || "Nicht gefunden"}</li>
 		<li><strong>Rechnungsdatum:</strong> ${formatGermanDate(invoiceData["Rechnungsdatum"])}
 		<li><strong>Gesamtbetrag:</strong> ${formatEuroAmount(invoiceData["Gesamtbetrag"])}
 		<li><strong>Bankverbindung:</strong> ${invoiceData["Bankverbindung des Verkäufers"] || "Nicht gefunden"}</li>
+		<li><strong>Terms:</strong> ${invoiceData["Terms"] || "Nicht gefunden"}</li>
 	  </ul>
-	`;
+	`);
 
 	const rightDetails = document.createElement("div");
 	rightDetails.style.width = "30%";

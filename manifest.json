@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "XRechnung-Viewer",
-  "version": "1.0",
+  "version": "1.2",
   "description": "Zeigt XRechnungen / ZUGFeRD-Rechnungen der ausgewählten E-Mail an.",
   "developer": {
     "name": "Dan Dyse",
@@ -20,7 +20,7 @@
     "default_icon": "icons/icon.png",
     "default_title": "XRechnungen"
   },
-  "applications": {
+  "browser_specific_settings": {
     "gecko": {
       "id": "xrechnung-viewer@example.com",
       "strict_min_version": "91.0"
