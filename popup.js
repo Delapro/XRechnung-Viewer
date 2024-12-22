@@ -55,7 +55,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 			}
 		  } catch (error) {
 			listItem.innerHTML = sanitizeHTML(`PDF-Datei ohne eingebettetes ZUGFeRD: <strong>${attachment.name}</strong>`);
-			if (error) console.error(error);
+			//if (defined(error)) console.error(error);
 		  }
 		} else if (attachment.contentType === "text/xml") {
 		  const fileText = new TextDecoder().decode(fileBlob);
@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 	  }
 	}
   } catch (error) {
-	console.error("Fehler im Popup:", error);
+	//console.error("Fehler im Popup:", error);
 	listElement.innerHTML = `Fehler: ${error.message}`;
   }
 
@@ -96,9 +96,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 	  //console.log("Gefundene Anhänge:", Object.keys(attachments));
 	  for (const [name, attachment] of Object.entries(attachments)) {
 		const decoder = new TextDecoder();
-		if (name.endsWith('.xml')) {
+		if (name.endsWith('.xml') || attachment.filename.endsWith('.xml')) {
 			xmlContent = decoder.decode(attachment.content);
-			console.log("!");
 			// Prüfen, ob die XML-ZUGFeRD-Daten enthalten sind
 			if (xmlContent.includes('CrossIndustryInvoice>')) {
 			  return xmlContent; // Gib die XML-Daten zurück
