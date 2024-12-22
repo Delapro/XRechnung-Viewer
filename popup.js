@@ -26,31 +26,57 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 	for (const attachment of attachments) {
 	  const listItem = document.createElement("b");
-	  
+
 	  listItem.style.display = "block";
 	  listItem.style.textAlign = "center";
 	  listElement.appendChild(listItem);
 
-	  if (attachment.contentType === "text/xml") {
+	  let invoiceData = null; // Sicherstellen, dass invoiceData deklariert ist
+
+	  if (attachment.contentType === "text/xml" || attachment.contentType === "application/pdf") {
 		const fileContent = await browser.messages.getAttachmentFile(messageId, attachment.partName);
-		const fileText = await fileContent.text();
+		const fileBlob = await fileContent.arrayBuffer();
+
+		if (attachment.contentType === "application/pdf") {
+		  try {
+			const xmlContent = await extractTextFromPDF(fileBlob);
+			const parser = new DOMParser();
+			const xmlDoc = parser.parseFromString(xmlContent, "application/xml");
 		
-		const parser = new DOMParser();
-		const xmlDoc = parser.parseFromString(fileText, "application/xml");
+			const isZUGFeRD = checkIfZUGFeRD(xmlDoc);
+		
+			if (isZUGFeRD) {
+			  invoiceData = extractInvoiceData(xmlDoc, "ZUGFeRD");
+			  listItem.innerHTML = sanitizeHTML(`<span style="color: blue;">ZUGFeRD-Rechnung erkannt</span>: <strong>${attachment.name}</strong>`);
+		
+			  if (invoiceData) {
+				displayInvoiceData(invoiceData, listElement);
+			  }
+			}
+		  } catch (error) {
+			listItem.innerHTML = sanitizeHTML(`PDF-Datei ohne eingebettetes ZUGFeRD: <strong>${attachment.name}</strong>`);
+			if (error) console.error(error);
+		  }
+		} else if (attachment.contentType === "text/xml") {
+		  const fileText = new TextDecoder().decode(fileBlob);
 
-		const isXRechnung = checkIfXRechnung(xmlDoc);
-		const isZUGFeRD = !isXRechnung && checkIfZUGFeRD(xmlDoc);
+		  const parser = new DOMParser();
+		  const xmlDoc = parser.parseFromString(fileText, "application/xml");
 
-		if (isXRechnung) {
+		  const isXRechnung = checkIfXRechnung(xmlDoc);
+		  const isZUGFeRD = !isXRechnung && checkIfZUGFeRD(xmlDoc);
+
+		  if (isXRechnung) {
 			invoiceData = extractInvoiceData(xmlDoc, "XRechnung");
-		  listItem.innerHTML = sanitizeHTML(`<span style="color: green;">XRechnung erkannt</span>: <strong>${attachment.name}</strong>`);
-		} else if (isZUGFeRD) {
+			listItem.innerHTML = sanitizeHTML(`<span style="color: green;">XRechnung erkannt</span>: <strong>${attachment.name}</strong>`);
+		  } else if (isZUGFeRD) {
 			invoiceData = extractInvoiceData(xmlDoc, "ZUGFeRD");
-		  listItem.innerHTML = sanitizeHTML(`<span style="color: blue;">ZUGFeRD-Rechnung erkannt</span>: <strong>${attachment.name}</strong>`);
-		}
-		
-		if (invoiceData) {
-		  displayInvoiceData(invoiceData, listElement);
+			listItem.innerHTML = sanitizeHTML(`<span style="color: blue;">ZUGFeRD-Rechnung erkannt</span>: <strong>${attachment.name}</strong>`);
+		  }
+
+		  if (invoiceData) {
+			displayInvoiceData(invoiceData, listElement);
+		  }
 		}
 	  }
 	}
@@ -58,19 +84,42 @@ document.addEventListener("DOMContentLoaded", async () => {
 	console.error("Fehler im Popup:", error);
 	listElement.innerHTML = `Fehler: ${error.message}`;
   }
+
+  async function extractTextFromPDF(pdfBuffer) {
+	pdfjsLib.GlobalWorkerOptions.workerSrc = './libs/pdf.worker.min.js'; // Lokaler Worker
   
+	const pdf = await pdfjsLib.getDocument({ data: pdfBuffer }).promise;
+	let xmlContent = null;
+	
+	const attachments = await pdf.getAttachments();
+	if (attachments) {
+	  //console.log("Gefundene Anhänge:", Object.keys(attachments));
+	  for (const [name, attachment] of Object.entries(attachments)) {
+		const decoder = new TextDecoder();
+		if (name.endsWith('.xml')) {
+			xmlContent = decoder.decode(attachment.content);
+			console.log("!");
+			// Prüfen, ob die XML-ZUGFeRD-Daten enthalten sind
+			if (xmlContent.includes('CrossIndustryInvoice>')) {
+			  return xmlContent; // Gib die XML-Daten zurück
+			}
+		}
+	  }
+	} 
+
+	throw new Error("Keine ZUGFeRD-Daten im PDF gefunden.");
+  }
+
   function sanitizeHTML(input) {
 	const template = document.createElement("template");
 	template.innerHTML = input;
-  
-	// Alle Skripte und potenziell gefährlichen Tags entfernen
+
 	const tagsToRemove = ["script", "iframe", "object", "embed", "link"];
 	tagsToRemove.forEach(tag => {
 	  const elements = template.content.querySelectorAll(tag);
 	  elements.forEach(el => el.remove());
 	});
-  
-	// Entferne unsichere Attribute
+
 	const elements = template.content.querySelectorAll("*");
 	elements.forEach(el => {
 	  [...el.attributes].forEach(attr => {
@@ -80,10 +129,33 @@ document.addEventListener("DOMContentLoaded", async () => {
 		}
 	  });
 	});
-  
+
 	return template.innerHTML;
   }
 
+  function checkIfZUGFeRD(xmlDoc) {
+	try {
+	  const invoiceElement = xmlDoc.documentElement;
+	  const namespace = invoiceElement.namespaceURI;
+	  const rootTag = invoiceElement.tagName;
+
+	  if (namespace && namespace.includes("urn:ferd:CrossIndustryDocument") && rootTag.includes("CrossIndustryInvoice")) {
+		return true;
+	  }
+
+	  const exchangedDocumentContext = xmlDoc.querySelector("ram\\:ExchangedDocumentContext, ExchangedDocumentContext");
+	  const exchangedDocument = xmlDoc.querySelector("ram\\:ExchangedDocument, ExchangedDocument");
+
+	  if (exchangedDocumentContext && exchangedDocument) {
+		return true;
+	  }
+
+	  return false;
+	} catch (error) {
+	  console.error("Fehler bei der ZUGFeRD-Prüfung:", error);
+	  return false;
+	}
+  }
 
   function checkIfXRechnung(xmlDoc) {
 	try {
@@ -131,7 +203,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 	}
   }
 
-function extractInvoiceData(xmlDoc, type) {
+  function extractInvoiceData(xmlDoc, type) {
 	try {
 	  const nsResolver = xmlDoc.createNSResolver(xmlDoc.documentElement);
 	  const data = {};
@@ -190,7 +262,7 @@ function extractInvoiceData(xmlDoc, type) {
 	return result.stringValue || null;
   }
 
-function displayInvoiceData(invoiceData, parentElement) {
+  function displayInvoiceData(invoiceData, parentElement) {
 	const invoiceSection = document.createElement("section");
 	invoiceSection.classList.add("invoice-section");
 	invoiceSection.style.width = "100%";
@@ -294,5 +366,4 @@ function displayInvoiceData(invoiceData, parentElement) {
 	const formatted = parseFloat(amountString).toFixed(2).replace(".", ",");
 	return `${formatted} Euro`;
   }
-
 });
