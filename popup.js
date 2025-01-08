@@ -178,30 +178,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 	}
   }
 
-  function checkIfZUGFeRD(xmlDoc) {
-	try {
-	  const invoiceElement = xmlDoc.documentElement;
-	  const namespace = invoiceElement.namespaceURI;
-	  const rootTag = invoiceElement.tagName;
-
-	  if (namespace && namespace.includes("urn:ferd:CrossIndustryDocument") && rootTag.includes("CrossIndustryInvoice")) {
-		return true;
-	  }
-
-	  const exchangedDocumentContext = xmlDoc.querySelector("ram\\:ExchangedDocumentContext, ExchangedDocumentContext");
-	  const exchangedDocument = xmlDoc.querySelector("ram\\:ExchangedDocument, ExchangedDocument");
-
-	  if (exchangedDocumentContext && exchangedDocument) {
-		return true;
-	  }
-
-	  return false;
-	} catch (error) {
-	  console.error("Fehler bei der ZUGFeRD-Prüfung:", error);
-	  return false;
-	}
-  }
-
   function extractInvoiceData(xmlDoc, type) {
 	try {
 	  const nsResolver = xmlDoc.createNSResolver(xmlDoc.documentElement);
