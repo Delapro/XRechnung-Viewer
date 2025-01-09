@@ -4,13 +4,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
 	const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 	if (!tab) {
-	  listElement.innerHTML = "Kein aktiver Tab gefunden.";
+	  const noTabMessage = document.createElement("div");
+	  noTabMessage.textContent = "Kein aktiver Tab gefunden.";
+	  listElement.appendChild(noTabMessage);
 	  return;
 	}
 
 	const messages = await browser.mailTabs.getSelectedMessages(tab.id);
 	if (!messages || messages.messages.length === 0) {
-	  listElement.innerHTML = "Keine E-Mail ausgewählt.";
+	  const noEmailMessage = document.createElement("div");
+	  noEmailMessage.textContent = "Keine E-Mail ausgewählt.";
+	  listElement.appendChild(noEmailMessage);
 	  return;
 	}
 
@@ -18,7 +22,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 	const attachments = await browser.messages.listAttachments(messageId);
 
 	if (attachments.length === 0) {
-	  listElement.innerHTML = "Keine Dateianhänge bei aktuell ausgewählter Email gefunden.";
+	  const noAttachmentsMessage = document.createElement("div");
+	  noAttachmentsMessage.textContent = "Keine Dateianhänge bei aktuell ausgewählter Email gefunden.";
+	  listElement.appendChild(noAttachmentsMessage);
 	  return;
 	}
 
@@ -26,12 +32,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 	for (const attachment of attachments) {
 	  const listItem = document.createElement("b");
-
 	  listItem.style.display = "block";
 	  listItem.style.textAlign = "center";
 	  listElement.appendChild(listItem);
 
-	  let invoiceData = null; // Sicherstellen, dass invoiceData deklariert ist
+	  let invoiceData = null;
 
 	  if (attachment.contentType === "text/xml" || attachment.contentType === "application/pdf") {
 		const fileContent = await browser.messages.getAttachmentFile(messageId, attachment.partName);
@@ -42,20 +47,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 			const xmlContent = await extractTextFromPDF(fileBlob);
 			const parser = new DOMParser();
 			const xmlDoc = parser.parseFromString(xmlContent, "application/xml");
-		
+
 			const isZUGFeRD = checkIfZUGFeRD(xmlDoc);
-		
+
 			if (isZUGFeRD) {
 			  invoiceData = extractInvoiceData(xmlDoc, "ZUGFeRD");
-			  listItem.innerHTML = sanitizeHTML(`<span style="color: blue;">ZUGFeRD-Rechnung erkannt</span>: <strong>${attachment.name}</strong>`);
-		
+			  const recognizedMessage = document.createElement("span");
+			  recognizedMessage.style.color = "blue";
+			  recognizedMessage.textContent = "ZUGFeRD-Rechnung erkannt: ";
+			  const attachmentName = document.createElement("strong");
+			  attachmentName.textContent = DOMPurify.sanitize(attachment.name);
+			  recognizedMessage.appendChild(attachmentName);
+			  listItem.appendChild(recognizedMessage);
+
 			  if (invoiceData) {
 				displayInvoiceData(invoiceData, listElement);
 			  }
 			}
 		  } catch (error) {
-			listItem.innerHTML = sanitizeHTML(`PDF-Datei ohne eingebettetes ZUGFeRD: <strong>${attachment.name}</strong>`);
-			//if (defined(error)) console.error(error);
+			const noZUGFeRDMessage = document.createElement("div");
+			noZUGFeRDMessage.textContent = `PDF-Datei ohne eingebettetes ZUGFeRD: ${DOMPurify.sanitize(attachment.name)}`;
+			listItem.appendChild(noZUGFeRDMessage);
 		  }
 		} else if (attachment.contentType === "text/xml") {
 		  const fileText = new TextDecoder().decode(fileBlob);
@@ -68,10 +80,22 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 		  if (isXRechnung) {
 			invoiceData = extractInvoiceData(xmlDoc, "XRechnung");
-			listItem.innerHTML = sanitizeHTML(`<span style="color: green;">XRechnung erkannt</span>: <strong>${attachment.name}</strong>`);
+			const recognizedMessage = document.createElement("span");
+			recognizedMessage.style.color = "green";
+			recognizedMessage.textContent = "XRechnung erkannt: ";
+			const attachmentName = document.createElement("strong");
+			attachmentName.textContent = DOMPurify.sanitize(attachment.name);
+			recognizedMessage.appendChild(attachmentName);
+			listItem.appendChild(recognizedMessage);
 		  } else if (isZUGFeRD) {
 			invoiceData = extractInvoiceData(xmlDoc, "ZUGFeRD");
-			listItem.innerHTML = sanitizeHTML(`<span style="color: blue;">ZUGFeRD-Rechnung erkannt</span>: <strong>${attachment.name}</strong>`);
+			const recognizedMessage = document.createElement("span");
+			recognizedMessage.style.color = "blue";
+			recognizedMessage.textContent = "ZUGFeRD-Rechnung erkannt: ";
+			const attachmentName = document.createElement("strong");
+			attachmentName.textContent = DOMPurify.sanitize(attachment.name);
+			recognizedMessage.appendChild(attachmentName);
+			listItem.appendChild(recognizedMessage);
 		  }
 
 		  if (invoiceData) {
@@ -81,8 +105,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 	  }
 	}
   } catch (error) {
-	//console.error("Fehler im Popup:", error);
-	listElement.innerHTML = `Fehler: ${error.message}`;
+	const errorMessage = document.createElement("div");
+	errorMessage.textContent = `Fehler: ${error.message}`;
+	listElement.appendChild(errorMessage);
   }
 
   async function extractTextFromPDF(pdfBuffer) {
@@ -107,29 +132,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 	} 
 
 	throw new Error("Keine ZUGFeRD-Daten im PDF gefunden.");
-  }
-
-  function sanitizeHTML(input) {
-	const template = document.createElement("template");
-	template.innerHTML = input;
-
-	const tagsToRemove = ["script", "iframe", "object", "embed", "link"];
-	tagsToRemove.forEach(tag => {
-	  const elements = template.content.querySelectorAll(tag);
-	  elements.forEach(el => el.remove());
-	});
-
-	const elements = template.content.querySelectorAll("*");
-	elements.forEach(el => {
-	  [...el.attributes].forEach(attr => {
-		const name = attr.name.toLowerCase();
-		if (name.startsWith("on") || name === "style" || name === "srcdoc") {
-		  el.removeAttribute(name);
-		}
-	  });
-	});
-
-	return template.innerHTML;
   }
 
   function checkIfZUGFeRD(xmlDoc) {
@@ -242,68 +244,121 @@ document.addEventListener("DOMContentLoaded", async () => {
 	invoiceSection.classList.add("invoice-section");
 	invoiceSection.style.width = "100%";
 	invoiceSection.style.boxSizing = "border-box";
-
+	
 	const sellerBlock = document.createElement("article");
 	sellerBlock.classList.add("invoice-block");
 	sellerBlock.style.textAlign = "left";
-	sellerBlock.innerHTML = sanitizeHTML(`
-	  <h3 style="text-align: left;">Verkäufer</h3>
-	  <ul>
-		<li><strong>Name:</strong> ${invoiceData["Name des Verkäufers"] || "Nicht gefunden"}</li>
-		<li><strong>Adresse:</strong> ${invoiceData["Adresse des Verkäufers"] || "Nicht gefunden"}</li>
-	  </ul>
-	`);
-
+	const sellerHeading = document.createElement("h3");
+	sellerHeading.textContent = "Verkäufer";
+	sellerBlock.appendChild(sellerHeading);
+	
+	const sellerList = document.createElement("ul");
+	const sellerNameItem = document.createElement("li");
+	const sellerNameLabel = document.createElement("strong");
+	sellerNameLabel.textContent = "Name: ";
+	sellerNameItem.appendChild(sellerNameLabel);
+	sellerNameItem.appendChild(document.createTextNode(DOMPurify.sanitize(invoiceData["Name des Verkäufers"]) || "Nicht gefunden"));
+	sellerList.appendChild(sellerNameItem);
+	
+	const sellerAddressItem = document.createElement("li");
+	const sellerAddressLabel = document.createElement("strong");
+	sellerAddressLabel.textContent = "Adresse: ";
+	sellerAddressItem.appendChild(sellerAddressLabel);
+	sellerAddressItem.appendChild(document.createTextNode(DOMPurify.sanitize(invoiceData["Adresse des Verkäufers"]) || "Nicht gefunden"));
+	sellerList.appendChild(sellerAddressItem);
+	
+	sellerBlock.appendChild(sellerList);
+	
 	const buyerBlock = document.createElement("article");
 	buyerBlock.classList.add("invoice-block");
 	buyerBlock.style.textAlign = "left";
-	buyerBlock.innerHTML = sanitizeHTML(`
-	  <h3 style="text-align: left;">Käufer</h3>
-	  <ul>
-		<li><strong>Name:</strong> ${invoiceData["Name des Käufers"] || "Nicht gefunden"}</li>
-		<li><strong>Adresse:</strong> ${invoiceData["Adresse des Käufers"] || "Nicht gefunden"}</li>
-	  </ul>
-	`);
-
+	const buyerHeading = document.createElement("h3");
+	buyerHeading.textContent = "Käufer";
+	buyerBlock.appendChild(buyerHeading);
+	
+	const buyerList = document.createElement("ul");
+	const buyerNameItem = document.createElement("li");
+	const buyerNameLabel = document.createElement("strong");
+	buyerNameLabel.textContent = "Name: ";
+	buyerNameItem.appendChild(buyerNameLabel);
+	buyerNameItem.appendChild(document.createTextNode(DOMPurify.sanitize(invoiceData["Name des Käufers"]) || "Nicht gefunden"));
+	buyerList.appendChild(buyerNameItem);
+	
+	const buyerAddressItem = document.createElement("li");
+	const buyerAddressLabel = document.createElement("strong");
+	buyerAddressLabel.textContent = "Adresse: ";
+	buyerAddressItem.appendChild(buyerAddressLabel);
+	buyerAddressItem.appendChild(document.createTextNode(DOMPurify.sanitize(invoiceData["Adresse des Käufers"]) || "Nicht gefunden"));
+	buyerList.appendChild(buyerAddressItem);
+	
+	buyerBlock.appendChild(buyerList);
+	
 	const detailsBlock = document.createElement("article");
 	detailsBlock.classList.add("invoice-block");
 	detailsBlock.style.display = "flex";
 	detailsBlock.style.justifyContent = "space-between";
-
+	
 	const leftDetails = document.createElement("div");
 	leftDetails.style.width = "70%";
-	leftDetails.innerHTML = sanitizeHTML(`
-	  <h3 style="text-align: left;">Rechnung</h3>
-	  <ul>
-		<li><strong>Rechnungsnummer:</strong> ${invoiceData["Rechnungsnummer"] || "Nicht gefunden"}</li>
-		<li><strong>Rechnungsdatum:</strong> ${formatGermanDate(invoiceData["Rechnungsdatum"])}
-		<li><strong>Gesamtbetrag:</strong> ${formatEuroAmount(invoiceData["Gesamtbetrag"])}
-		<li><strong>Bankverbindung:</strong> ${invoiceData["Bankverbindung des Verkäufers"] || "Nicht gefunden"}</li>
-		<li><strong>Terms:</strong> ${invoiceData["Terms"] || "Nicht gefunden"}</li>
-	  </ul>
-	`);
-
+	
+	const invoiceList = document.createElement("ul");
+	const invoiceNumberItem = document.createElement("li");
+	const invoiceNumberLabel = document.createElement("strong");
+	invoiceNumberLabel.textContent = "Rechnungsnummer: ";
+	invoiceNumberItem.appendChild(invoiceNumberLabel);
+	invoiceNumberItem.appendChild(document.createTextNode(DOMPurify.sanitize(invoiceData["Rechnungsnummer"]) || "Nicht gefunden"));
+	invoiceList.appendChild(invoiceNumberItem);
+	
+	const invoiceDateItem = document.createElement("li");
+	const invoiceDateLabel = document.createElement("strong");
+	invoiceDateLabel.textContent = "Rechnungsdatum: ";
+	invoiceDateItem.appendChild(invoiceDateLabel);
+	invoiceDateItem.appendChild(document.createTextNode(formatGermanDate(DOMPurify.sanitize(invoiceData["Rechnungsdatum"])) || "Nicht gefunden"));
+	invoiceList.appendChild(invoiceDateItem);
+	
+	const invoiceAmountItem = document.createElement("li");
+	const invoiceAmountLabel = document.createElement("strong");
+	invoiceAmountLabel.textContent = "Gesamtbetrag: ";
+	invoiceAmountItem.appendChild(invoiceAmountLabel);
+	invoiceAmountItem.appendChild(document.createTextNode(formatEuroAmount(DOMPurify.sanitize(invoiceData["Gesamtbetrag"])) || "Nicht gefunden"));
+	invoiceList.appendChild(invoiceAmountItem);
+	
+	const invoiceBankItem = document.createElement("li");
+	const invoiceBankLabel = document.createElement("strong");
+	invoiceBankLabel.textContent = "Bankverbindung: ";
+	invoiceBankItem.appendChild(invoiceBankLabel);
+	invoiceBankItem.appendChild(document.createTextNode(DOMPurify.sanitize(invoiceData["Bankverbindung des Verkäufers"]) || "Nicht gefunden"));
+	invoiceList.appendChild(invoiceBankItem);
+	
+	const invoiceTermsItem = document.createElement("li");
+	const invoiceTermsLabel = document.createElement("strong");
+	invoiceTermsLabel.textContent = "Terms: ";
+	invoiceTermsItem.appendChild(invoiceTermsLabel);
+	invoiceTermsItem.appendChild(document.createTextNode(DOMPurify.sanitize(invoiceData["Terms"]) || "Nicht gefunden"));
+	invoiceList.appendChild(invoiceTermsItem);
+  
 	const rightDetails = document.createElement("div");
 	rightDetails.style.width = "30%";
 	rightDetails.style.textAlign = "center";
 	rightDetails.style.display = "flex";
 	rightDetails.style.alignItems = "center";
 	rightDetails.style.justifyContent = "center";
-
+	
 	const qrCanvas = document.createElement("canvas");
 	qrCanvas.id = "qrCanvas";
 	rightDetails.appendChild(qrCanvas);
 	generateQRCode(qrCanvas, `BCD\n001\n1\nSCT\n\n${invoiceData["Name des Verkäufers"]}\n${invoiceData["Bankverbindung des Verkäufers"]}\nEUR${invoiceData["Gesamtbetrag"]}\n\nRechnung ${invoiceData["Rechnungsnummer"]}`);
-
+	
+	leftDetails.appendChild(invoiceList);
 	detailsBlock.appendChild(leftDetails);
 	detailsBlock.appendChild(rightDetails);
-
+	
 	invoiceSection.appendChild(sellerBlock);
 	invoiceSection.appendChild(buyerBlock);
 	invoiceSection.appendChild(detailsBlock);
-
+	
 	parentElement.appendChild(invoiceSection);
-
+	
 	const spacer = document.createElement("div");
 	spacer.style.height = "1em";
 	parentElement.appendChild(spacer);
